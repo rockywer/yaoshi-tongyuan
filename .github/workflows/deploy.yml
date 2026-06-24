@@ -1,0 +1,89 @@
+name: Deploy website
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: web/node_modules
+          key: npm-cache-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+          restore-keys: |
+            npm-cache-${{ runner.os }}-
+
+      - name: Build web and locate output
+        id: build
+        run: |
+          if [ -f web/package.json ]; then
+            echo "Found web/package.json — building..."
+            pushd web
+            npm ci
+            npm run build
+            popd
+            if [ -d web/build ]; then dir=web/build
+            elif [ -d web/dist ]; then dir=web/dist
+            elif [ -d web/out ]; then dir=web/out
+            else echo "No build output found" && exit 1
+            fi
+            echo "build_dir=$dir" >> $GITHUB_OUTPUT
+          else
+            echo "No web/package.json found; nothing to build"
+            echo "build_dir=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy to gh-pages (non-force)
+        if: steps.build.outputs.build_dir != ''
+        env:
+          BUILD_DIR: ${{ steps.build.outputs.build_dir }}
+          GH_PAGES_DIR: ${{ github.workspace }}/gh-pages-temp
+        run: |
+          set -e
+          echo "Preparing non-forced deployment to gh-pages..."
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Prepare temp directory
+          rm -rf "$GH_PAGES_DIR"
+          mkdir -p "$GH_PAGES_DIR"
+
+          # Check if gh-pages exists on remote
+          if git ls-remote --exit-code --heads origin gh-pages; then
+            echo "gh-pages exists — checking out..."
+            git fetch origin gh-pages:gh-pages
+            git worktree add "$GH_PAGES_DIR" gh-pages
+          else
+            echo "gh-pages does not exist — creating new branch"
+            git worktree add -B gh-pages "$GH_PAGES_DIR"
+          fi
+
+          # Clean and copy
+          rm -rf "$GH_PAGES_DIR"/*
+          cp -r "$BUILD_DIR"/* "$GH_PAGES_DIR/"
+
+          pushd "$GH_PAGES_DIR"
+          if [ -n "$(git status --porcelain)" ]; then
+            git add --all
+            git commit -m "chore(deploy): publish from GitHub Actions"
+            git push origin gh-pages
+            echo "Published to gh-pages (non-forced)."
+          else
+            echo "No changes to publish to gh-pages."
+          fi
+          popd
+
+          git worktree remove "$GH_PAGES_DIR" || true
