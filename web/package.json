@@ -1,0 +1,17 @@
+{
+  "name": "yaoshi-tongyuan-web",
+  "version": "1.0.0",
+  "description": "药食同源智能体 - 前端网站",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Building web assets...' && mkdir -p dist && cp -r ./* dist/ 2>/dev/null || true && echo 'Build complete.'",
+    "dev": "echo 'Starting dev server...' && python -m http.server 8000 --directory ."
+  },
+  "keywords": [
+    "chinese-medicine",
+    "health",
+    "ai"
+  ],
+  "author": "rockywer",
+  "license": "MIT"
+}
